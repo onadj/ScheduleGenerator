@@ -1,9 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
-from django.contrib import admin
-from datetime import timedelta, datetime
 
-# Definicija mogućih dana u tjednu
 DAYS_OF_WEEK = [
     ('Monday', 'Monday'),
     ('Tuesday', 'Tuesday'),
@@ -34,8 +31,8 @@ class Day(models.Model):
 
 class ShiftType(models.Model):
     name = models.CharField(max_length=100, unique=True)
-    start_time = models.TimeField(default="08:00")  # Default vrijeme ako nije unijeto
-    end_time = models.TimeField(default="16:00")    # Default kraj smjene
+    start_time = models.TimeField(default="08:00")  
+    end_time = models.TimeField(default="16:00")    
 
     def __str__(self):
         return f"{self.name} ({self.start_time} - {self.end_time})"
@@ -49,19 +46,26 @@ class Employee(models.Model):
     available_days = models.ManyToManyField(Day, blank=True)
     max_daily_hours = models.PositiveIntegerField()
     can_work_shifts = models.ManyToManyField(ShiftType, blank=True)
-    
+    priority = models.IntegerField(default=1)  
+
     def __str__(self):
         return self.user.username
+
 
 class ShiftRequirement(models.Model):
     department = models.ForeignKey(Department, on_delete=models.CASCADE)
     date = models.DateField()
-    shift_type = models.ForeignKey(ShiftType, on_delete=models.CASCADE, default=1)
+    shift_type = models.ForeignKey(ShiftType, on_delete=models.CASCADE)
     required_hours = models.PositiveIntegerField()
     required_roles = models.ManyToManyField(Role)
-    
+    required_senior_nurses = models.PositiveIntegerField(default=0)
+    required_junior_nurses = models.PositiveIntegerField(default=0)
+    required_senior_hca = models.PositiveIntegerField(default=0)
+    required_junior_hca = models.PositiveIntegerField(default=0)
+
     def __str__(self):
         return f"{self.department.name} - {self.date} {self.shift_type}"
+
 
 class Shift(models.Model):
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE)
@@ -70,9 +74,20 @@ class Shift(models.Model):
     date = models.DateField()
     start_time = models.TimeField()
     end_time = models.TimeField()
+
+    def calculate_total_hours(self):
+        total_seconds = (self.end_time.hour * 3600 + self.end_time.minute * 60) - \
+                        (self.start_time.hour * 3600 + self.start_time.minute * 60)
+        return round(total_seconds / 3600, 2)
+
+    def get_weekday(self):
+        return self.date.strftime('%A')  # Vraća dan u tjednu kao string
+
+    def get_employee_full_name(self):
+        return f"{self.employee.user.first_name} {self.employee.user.last_name}"
     
-    def __str__(self):
-        return f"{self.employee.user.username} - {self.department.name} ({self.start_time}-{self.end_time})"
+    get_weekday.short_description = "Weekday"
+    get_employee_full_name.short_description = "Employee"
 
 class TimeOff(models.Model):
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE)
