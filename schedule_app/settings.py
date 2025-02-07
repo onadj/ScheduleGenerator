@@ -25,8 +25,8 @@ SECRET_KEY = 'django-insecure-5rx5%t(azjglr)-d_j2vdox99@7xl8ylb_#o+iraq+926d4_dk
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['8000-onadj-schedulegenerato-sl5lyb9ksko.ws-eu117.gitpod.io']
-CSRF_TRUSTED_ORIGINS = ['https://8000-onadj-schedulegenerato-sl5lyb9ksko.ws-eu117.gitpod.io']
+ALLOWED_HOSTS = ['8000-onadj-schedulegenerato-1q1d0uhydwe.ws-eu117.gitpod.io']
+CSRF_TRUSTED_ORIGINS = ['https://8000-onadj-schedulegenerato-1q1d0uhydwe.ws-eu117.gitpod.io']
 
 SESSION_COOKIE_SECURE = False
 CSRF_COOKIE_SECURE = False
