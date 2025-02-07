@@ -2,6 +2,8 @@ from django.contrib import admin
 import csv
 import pandas as pd
 from django.http import HttpResponse
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
 from datetime import datetime, timedelta
 from django.utils.module_loading import import_string
 from .models import Department, Role, Employee, ShiftRequirement, Shift, TimeOff, Day, ShiftType
@@ -57,35 +59,30 @@ class ShiftRequirementAdmin(admin.ModelAdmin):
 ### 📌 Shift Admin ###
 @admin.register(Shift)
 class ShiftAdmin(admin.ModelAdmin):
-    list_display = ('get_employee_full_name', 'department', 'get_role', 'date', 'formatted_start_time', 'formatted_end_time', 'calculate_total_hours')
+    list_display = ('get_employee_full_name', 'department', 'get_role_name', 'date', 'start_time', 'end_time', 'calculate_total_hours')
     search_fields = ('employee__user__username', 'employee__user__first_name', 'employee__user__last_name', 'department__name', 'role__name', 'date')
     list_filter = ('department', 'role', 'date')
     ordering = ('date', 'start_time')
-    actions = ['export_schedule_to_csv', 'export_schedule_to_excel', 'delete_all_shifts']
+    actions = ['export_schedule_to_csv', 'export_schedule_to_excel', 'export_schedule_to_pdf', 'delete_all_shifts']
 
     def get_employee_full_name(self, obj):
         return f"{obj.employee.user.first_name} {obj.employee.user.last_name} ({obj.employee.user.username})"
     get_employee_full_name.short_description = "Employee"
 
-    def get_role(self, obj):
+    def get_role_name(self, obj):
         return obj.role.name
-    get_role.short_description = "Role"
-
-    def formatted_start_time(self, obj):
-        return obj.start_time.strftime('%H:%M')
-    formatted_start_time.short_description = "Start Time"
-
-    def formatted_end_time(self, obj):
-        return obj.end_time.strftime('%H:%M')
-    formatted_end_time.short_description = "End Time"
+    get_role_name.short_description = "Role"
 
     def calculate_total_hours(self, obj):
         start_dt = datetime.combine(obj.date, obj.start_time)
         end_dt = datetime.combine(obj.date, obj.end_time)
+
+        # Ako se smjena proteže preko ponoći, dodaj jedan dan na end_dt
         if end_dt <= start_dt:
             end_dt += timedelta(days=1)
+
         total_seconds = (end_dt - start_dt).total_seconds()
-        return round(total_seconds / 3600, 2)
+        return max(round(total_seconds / 3600, 2), 0)  # Osiguravamo da nema negativnih vrijednosti
 
     calculate_total_hours.short_description = "Total Hours"
 
@@ -98,13 +95,13 @@ class ShiftAdmin(admin.ModelAdmin):
 
         for shift in queryset.distinct():
             writer.writerow([
-                shift.get_employee_full_name(), 
+                self.get_employee_full_name(shift),
                 shift.department.name, 
-                shift.get_role(), 
+                shift.role.name, 
                 shift.date, 
-                shift.formatted_start_time(), 
-                shift.formatted_end_time(), 
-                shift.calculate_total_hours()
+                shift.start_time.strftime('%H:%M'), 
+                shift.end_time.strftime('%H:%M'), 
+                self.calculate_total_hours(shift)
             ])
         return response
 
@@ -112,13 +109,13 @@ class ShiftAdmin(admin.ModelAdmin):
     def export_schedule_to_excel(self, request, queryset):
         df = pd.DataFrame([
             (
-                shift.get_employee_full_name(), 
+                self.get_employee_full_name(shift),
                 shift.department.name, 
-                shift.get_role(), 
+                shift.role.name, 
                 shift.date, 
-                shift.formatted_start_time(), 
-                shift.formatted_end_time(), 
-                shift.calculate_total_hours()
+                shift.start_time.strftime('%H:%M'), 
+                shift.end_time.strftime('%H:%M'), 
+                self.calculate_total_hours(shift)
             ) for shift in queryset.distinct()
         ], columns=['Employee', 'Department', 'Role', 'Date', 'Start Time', 'End Time', 'Total Hours'])
 
@@ -127,17 +124,49 @@ class ShiftAdmin(admin.ModelAdmin):
         df.to_excel(response, index=False)
         return response
 
+    @admin.action(description="📄 Export schedule to PDF")
+    def export_schedule_to_pdf(self, request, queryset):
+        response = HttpResponse(content_type='application/pdf')
+        response['Content-Disposition'] = 'attachment; filename="schedule.pdf"'
+        pdf = canvas.Canvas(response, pagesize=letter)
+        pdf.setFont("Helvetica", 12)
+        y = 750  
+
+        pdf.drawString(200, y, "Generated Schedule")
+        y -= 30
+
+        headers = ['Employee', 'Department', 'Role', 'Date', 'Start Time', 'End Time', 'Total Hours']
+        x_positions = [50, 150, 250, 350, 450, 500, 550]
+
+        for x, header in zip(x_positions, headers):
+            pdf.drawString(x, y, header)
+        y -= 20
+
+        for shift in queryset.distinct():
+            data = [
+                self.get_employee_full_name(shift),
+                shift.department.name, 
+                shift.role.name, 
+                str(shift.date), 
+                shift.start_time.strftime('%H:%M'), 
+                shift.end_time.strftime('%H:%M'), 
+                str(self.calculate_total_hours(shift))
+            ]
+            for x, value in zip(x_positions, data):
+                pdf.drawString(x, y, value)
+            y -= 20
+
+            if y < 50:
+                pdf.showPage()
+                y = 750
+
+        pdf.save()
+        return response
+
     @admin.action(description="🗑 Delete all shifts")
     def delete_all_shifts(self, request, queryset):
         queryset.delete()
         self.message_user(request, "🗑 All selected shifts have been deleted.")
-
-### 📌 TimeOff Admin ###
-@admin.register(TimeOff)
-class TimeOffAdmin(admin.ModelAdmin):
-    list_display = ('employee', 'start_date', 'end_date', 'reason')
-    search_fields = ('employee__user__username', 'reason')
-    list_filter = ('reason',)
 
 ### 📌 Registering other models ###
 admin.site.register(Department)
